@@ -88,9 +88,23 @@ function App() {
   // Check authentication state on app load
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      setLoading(false)
+      try {
+        // Set a timeout for the authentication check
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Authentication timeout')), 10000)
+        )
+        
+        const authPromise = supabase.auth.getSession()
+        
+        const { data: { session } } = await Promise.race([authPromise, timeoutPromise])
+        setUser(session?.user ?? null)
+      } catch (error) {
+        console.log('Auth check failed or timed out:', error.message)
+        // Continue without authentication if there's an error
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
     }
     
     checkAuth()
@@ -124,8 +138,11 @@ function App() {
 
   // Load completed sets when date changes
   useEffect(() => {
-    if (user) {
+    if (user && user.id !== 'demo-user') {
       loadUserCompletedSets(user.id, currentDate)
+    } else if (user && user.id === 'demo-user') {
+      // Reset completed sets for demo user when date changes
+      setCompletedSets({})
     }
   }, [currentDate, user])
 
@@ -174,7 +191,17 @@ function App() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <Dumbbell className="h-12 w-12 mx-auto mb-4 text-blue-600 animate-pulse" />
-          <p>Loading...</p>
+          <p className="mb-4">Loading...</p>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setLoading(false)
+              setUser(null)
+            }}
+            className="text-sm"
+          >
+            Skip Authentication (Demo Mode)
+          </Button>
         </div>
       </div>
     )
@@ -182,12 +209,23 @@ function App() {
 
   if (!user) {
     return (
-      <AuthForm 
-        onSignIn={handleSignIn}
-        onSignUp={handleSignUp}
-        loading={loading}
-        error={authError}
-      />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+        <AuthForm 
+          onSignIn={handleSignIn}
+          onSignUp={handleSignUp}
+          loading={loading}
+          error={authError}
+        />
+        <div className="flex-1 flex items-end justify-center pb-8">
+          <Button 
+            variant="ghost" 
+            onClick={() => setUser({ id: 'demo-user', email: 'demo@example.com' })}
+            className="text-sm text-muted-foreground"
+          >
+            Continue without account (Demo Mode)
+          </Button>
+        </div>
+      </div>
     )
   }
 
@@ -297,16 +335,20 @@ function App() {
     const isCompleted = completedSets[key]
     
     if (isCompleted) {
-      // Remove from cloud and local state
-      await removeCompletedSet(user.id, currentDate, exerciseName, setIndex)
+      // Remove from cloud and local state (skip cloud if demo user)
+      if (user.id !== 'demo-user') {
+        await removeCompletedSet(user.id, currentDate, exerciseName, setIndex)
+      }
       setCompletedSets(prev => {
         const newSets = { ...prev }
         delete newSets[key]
         return newSets
       })
     } else {
-      // Add to cloud and local state
-      await saveCompletedSet(user.id, currentDate, exerciseName, setIndex)
+      // Add to cloud and local state (skip cloud if demo user)
+      if (user.id !== 'demo-user') {
+        await saveCompletedSet(user.id, currentDate, exerciseName, setIndex)
+      }
       setCompletedSets(prev => ({ ...prev, [key]: true }))
       
       // Start rest timer
