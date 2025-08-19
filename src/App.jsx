@@ -123,21 +123,22 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Load completed sets from database
-  const loadUserCompletedSets = async (userId, date) => {
-    const { data, error } = await loadCompletedSets(userId, date)
-    if (!error && data) {
-      const setsMap = {}
-      data.forEach(item => {
-        const key = `${item.exercise_name}-${item.set_index}`
-        setsMap[key] = true
-      })
-      setCompletedSets(setsMap)
-    }
-  }
-
   // Load completed sets when date changes
   useEffect(() => {
+    const loadUserCompletedSets = async (userId, date) => {
+      try {
+        const completedSets = await loadCompletedSets(userId, date)
+        const setsMap = {}
+        completedSets.forEach(set => {
+          const key = `${set.exercise_name}-${set.set_index}`
+          setsMap[key] = true
+        })
+        setCompletedSets(setsMap)
+      } catch (error) {
+        console.error('Error loading completed sets:', error)
+      }
+    }
+
     if (user && user.id !== 'demo-user') {
       loadUserCompletedSets(user.id, currentDate)
     } else if (user && user.id === 'demo-user') {
