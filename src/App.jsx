@@ -219,7 +219,10 @@ function App() {
         <div className="flex-1 flex items-end justify-center pb-8">
           <Button 
             variant="ghost" 
-            onClick={() => setUser({ id: 'demo-user', email: 'demo@example.com' })}
+            onClick={() => {
+              console.log('Demo mode clicked')
+              setUser({ id: 'demo-user', email: 'demo@example.com' })
+            }}
             className="text-sm text-muted-foreground"
           >
             Continue without account (Demo Mode)
@@ -228,6 +231,9 @@ function App() {
       </div>
     )
   }
+
+  // Add error boundary for demo mode
+  try {
 
   // Calculate progression
   const calculateProgression = (exercise, date) => {
@@ -586,6 +592,21 @@ function App() {
       </div>
     </div>
   )
+  } catch (error) {
+    console.error('App rendering error:', error)
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Dumbbell className="h-12 w-12 mx-auto mb-4 text-red-600" />
+          <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
+          <p className="text-gray-600 mb-4">Error: {error.message}</p>
+          <Button onClick={() => window.location.reload()}>
+            Reload App
+          </Button>
+        </div>
+      </div>
+    )
+  }
 }
 
 export default App
