@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
-import { Calendar, Dumbbell, Timer, CheckCircle2, Circle, ChevronLeft, ChevronRight, TrendingUp, Home } from 'lucide-react'
+import { Calendar, Dumbbell, Timer, CheckCircle2, Circle, ChevronLeft, ChevronRight, TrendingUp, Home, BarChart3 } from 'lucide-react'
 import ExerciseCard from './components/ExerciseCard.jsx'
+import ProgressView from './components/ProgressView.jsx'
 import './App.css'
 
 // Workout data structure
@@ -68,6 +69,7 @@ function DemoApp() {
   const [completedSets, setCompletedSets] = useState({})
   const [restTimer, setRestTimer] = useState(0)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [activeTab, setActiveTab] = useState('workout') // 'workout' or 'progress'
   
   // Performance tracking state
   const [actualPerformance, setActualPerformance] = useState({})
@@ -335,17 +337,41 @@ function DemoApp() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Card className="mb-6">
-          <CardHeader className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Dumbbell className="h-8 w-8 text-blue-600" />
-              <CardTitle className="text-2xl">Felix's 12-Month Workout</CardTitle>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              <Button variant="outline" size="sm" onClick={() => navigateDate(-1)}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="text-center">
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-6 justify-center">
+          <Button
+            variant={activeTab === 'workout' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('workout')}
+            className="flex items-center gap-2"
+          >
+            <Dumbbell className="h-4 w-4" />
+            Workout
+          </Button>
+          <Button
+            variant={activeTab === 'progress' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('progress')}
+            className="flex items-center gap-2"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Progress
+          </Button>
+        </div>
+
+        {/* Conditional Tab Content */}
+        {activeTab === 'progress' ? (
+          <ProgressView />
+        ) : (
+          <Card className="mb-6">
+            <CardHeader className="text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Dumbbell className="h-8 w-8 text-blue-600" />
+                <CardTitle className="text-2xl">Felix's 12-Month Workout</CardTitle>
+              </div>
+              <div className="flex items-center justify-center gap-4">
+                <Button variant="outline" size="sm" onClick={() => navigateDate(-1)}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="text-center">
                 <div className="font-semibold">{currentDate.toLocaleDateString('en-US', { 
                   weekday: 'long', 
                   year: 'numeric', 
@@ -430,6 +456,7 @@ function DemoApp() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   )
