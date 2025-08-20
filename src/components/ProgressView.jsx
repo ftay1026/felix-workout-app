@@ -55,9 +55,9 @@ const ProgressView = () => {
     weight: true,
     reps: false,
     volume: false,
-    intensity: false
+    sessionWorkLoad: false
   })
-  const [chartType, setChartType] = useState('single') // 'single', 'dual', 'volume', 'intensity'
+  const [chartType, setChartType] = useState('single') // 'single', 'dual', 'volume', 'sessionWorkLoad'
 
   // Get all exercises in a flat array
   const allExercises = Object.values(exercises).flat().filter(ex => typeof ex.baseWeight === 'number')
@@ -110,12 +110,8 @@ const ProgressView = () => {
       const tempoSeconds = tempo === "3-3" ? 6 : tempo === "4-4" ? 8 : tempo === "5-5" ? 10 : 6
       const restSeconds = rest === "30s" ? 30 : rest === "90s" ? 90 : rest === "2min" ? 120 : rest === "3min" ? 180 : 60
       
-      // Intensity score (0-100): combines weight progression, tempo, and rest efficiency
-      const weightIntensity = (weight / exercise.baseWeight) * 30
-      const tempoIntensity = (tempoSeconds / 6) * 25
-      const restIntensity = (60 / restSeconds) * 25
-      const volumeIntensity = (volume / (exercise.baseWeight * exercise.baseReps * exercise.baseSets)) * 20
-      const intensityScore = Math.min(100, weightIntensity + tempoIntensity + restIntensity + volumeIntensity)
+      // Session Work Load: total work for this exercise (weight × reps × sets)
+      const sessionWorkLoad = volume
       
       data.push({
         week: `W${week}`,
@@ -124,7 +120,7 @@ const ProgressView = () => {
         expectedReps: reps,
         expectedSets: sets,
         expectedVolume: Math.round(volume),
-        expectedIntensity: Math.round(intensityScore),
+        expectedSessionWorkLoad: Math.round(sessionWorkLoad),
         expectedTempo: tempo,
         expectedRest: rest
       })
@@ -149,13 +145,9 @@ const ProgressView = () => {
             const avgReps = reps.length > 0 ? reps.reduce((sum, r) => sum + r, 0) / reps.length : point.expectedReps
             const totalSets = weights.length
             
-            // Calculate actual volume and intensity
+            // Calculate actual volume and session work load
             const actualVolume = avgWeight * avgReps * totalSets
-            
-            // Simplified intensity calculation based on actual performance
-            const weightRatio = avgWeight / point.expected
-            const repsRatio = avgReps / point.expectedReps
-            const actualIntensity = Math.min(100, (weightRatio * 50) + (repsRatio * 50))
+            const actualSessionWorkLoad = actualVolume // For individual exercise, same as volume
             
             return {
               ...point,
@@ -163,7 +155,7 @@ const ProgressView = () => {
               actualReps: Math.round(avgReps),
               actualSets: totalSets,
               actualVolume: Math.round(actualVolume),
-              actualIntensity: Math.round(actualIntensity)
+              actualSessionWorkLoad: Math.round(actualSessionWorkLoad)
             }
           }
         }
@@ -213,6 +205,8 @@ const ProgressView = () => {
             
             // Determine unit based on data key
             if (entry.dataKey?.includes('Volume') || entry.dataKey?.includes('volume')) {
+              unit = " kg"
+            } else if (entry.dataKey?.includes('SessionWorkLoad') || entry.dataKey?.includes('sessionWorkLoad')) {
               unit = " kg"
             } else if (entry.dataKey?.includes('Reps') || entry.dataKey?.includes('reps')) {
               unit = " reps"
@@ -311,11 +305,11 @@ const ProgressView = () => {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={selectedMetrics.intensity}
-                    onChange={(e) => setSelectedMetrics(prev => ({ ...prev, intensity: e.target.checked }))}
+                    checked={selectedMetrics.sessionWorkLoad}
+                    onChange={(e) => setSelectedMetrics(prev => ({ ...prev, sessionWorkLoad: e.target.checked }))}
                     className="rounded"
                   />
-                  <span className="text-sm font-medium">Intensity Score</span>
+                  <span className="text-sm font-medium">Session Work Load</span>
                 </label>
               </div>
             </div>
@@ -349,11 +343,11 @@ const ProgressView = () => {
                   Volume Focus
                 </Button>
                 <Button
-                  variant={chartType === 'intensity' ? 'default' : 'outline'}
+                  variant={chartType === 'sessionWorkLoad' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setChartType('intensity')}
+                  onClick={() => setChartType('sessionWorkLoad')}
                 >
-                  Intensity Analysis
+                  Session Work Load
                 </Button>
               </div>
             </div>
@@ -520,33 +514,33 @@ const ProgressView = () => {
                             }}
                           />
                         </LineChart>
-                      ) : chartType === 'intensity' ? (
-                        // Intensity score chart
+                      ) : chartType === 'sessionWorkLoad' ? (
+                        // Session Work Load chart
                         <LineChart data={data}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="week" />
-                          <YAxis domain={[0, 100]} label={{ value: 'Intensity Score', angle: -90, position: 'insideLeft' }} />
+                          <YAxis label={{ value: 'Session Work Load (kg)', angle: -90, position: 'insideLeft' }} />
                           <Tooltip content={<CustomTooltip />} />
                           <Legend />
                           <Line 
                             type="monotone" 
-                            dataKey="expectedIntensity" 
+                            dataKey="expectedSessionWorkLoad" 
                             stroke="#000000" 
                             strokeWidth={2}
-                            name="Expected Intensity"
+                            name="Expected Session Work Load"
                             connectNulls={false}
                           />
                           <Line 
                             type="monotone" 
-                            dataKey="actualIntensity" 
+                            dataKey="actualSessionWorkLoad" 
                             stroke="#22c55e"
                             strokeWidth={2}
-                            name="Actual Intensity"
+                            name="Actual Session Work Load"
                             connectNulls={false}
                             dot={(props) => {
                               const { payload } = props
-                              if (payload && payload.actualIntensity && payload.expectedIntensity) {
-                                const color = payload.actualIntensity >= payload.expectedIntensity ? "#22c55e" : "#ef4444"
+                              if (payload && payload.actualSessionWorkLoad && payload.expectedSessionWorkLoad) {
+                                const color = payload.actualSessionWorkLoad >= payload.expectedSessionWorkLoad ? "#22c55e" : "#ef4444"
                                 return <circle {...props} fill={color} stroke={color} r={3} />
                               }
                               return null
