@@ -51,11 +51,18 @@ const ProgressView = () => {
   const [selectedExercises, setSelectedExercises] = useState({})
   const [chartData, setChartData] = useState({})
   const [timeRange, setTimeRange] = useState('12weeks') // 12weeks, 6months, 12months
+  const [selectedMetrics, setSelectedMetrics] = useState({
+    weight: true,
+    reps: false,
+    volume: false,
+    intensity: false
+  })
+  const [chartType, setChartType] = useState('single') // 'single', 'dual', 'volume', 'intensity'
 
   // Get all exercises in a flat array
   const allExercises = Object.values(exercises).flat().filter(ex => typeof ex.baseWeight === 'number')
 
-  // Calculate expected progression for an exercise over time
+  // Calculate expected progression for an exercise over time with all metrics
   const calculateExpectedProgression = (exercise, weeks = 12) => {
     const startDate = new Date('2025-08-19')
     const data = []
@@ -69,19 +76,25 @@ const ProgressView = () => {
       
       let weight = exercise.baseWeight
       let reps = exercise.baseReps
+      let sets = exercise.baseSets
+      let tempo = exercise.tempo
+      let rest = exercise.rest
       
       // Apply weekly progression
       if (weekInCycle === 2) {
-        reps += 1
+        reps += 1 // Week 2: +1 rep
       } else if (weekInCycle === 3) {
+        // Week 3: Weight increase
         if (exercise.type === "compound") {
           weight += 2.5
         } else if (exercise.type === "isolation") {
           weight += 1.25
         }
       } else if (weekInCycle === 4) {
+        // Week 4: Deload
         weight *= 0.8
         weight = Math.round(weight * 4) / 4
+        reps = exercise.baseReps // Reset reps
       }
       
       // Apply monthly progression (simplified)
@@ -92,18 +105,35 @@ const ProgressView = () => {
         weight += monthlyIncrease * 1.25
       }
       
+      // Calculate derived metrics
+      const volume = weight * reps * sets
+      const tempoSeconds = tempo === "3-3" ? 6 : tempo === "4-4" ? 8 : tempo === "5-5" ? 10 : 6
+      const restSeconds = rest === "30s" ? 30 : rest === "90s" ? 90 : rest === "2min" ? 120 : rest === "3min" ? 180 : 60
+      
+      // Intensity score (0-100): combines weight progression, tempo, and rest efficiency
+      const weightIntensity = (weight / exercise.baseWeight) * 30
+      const tempoIntensity = (tempoSeconds / 6) * 25
+      const restIntensity = (60 / restSeconds) * 25
+      const volumeIntensity = (volume / (exercise.baseWeight * exercise.baseReps * exercise.baseSets)) * 20
+      const intensityScore = Math.min(100, weightIntensity + tempoIntensity + restIntensity + volumeIntensity)
+      
       data.push({
         week: `W${week}`,
         date: weekDate.toISOString().split('T')[0],
         expected: Math.round(weight * 4) / 4,
-        expectedReps: reps
+        expectedReps: reps,
+        expectedSets: sets,
+        expectedVolume: Math.round(volume),
+        expectedIntensity: Math.round(intensityScore),
+        expectedTempo: tempo,
+        expectedRest: rest
       })
     }
     
     return data
   }
 
-  // Get actual performance data from localStorage
+  // Get actual performance data from localStorage with all metrics
   const getActualPerformanceData = (exerciseName, expectedData) => {
     const actualData = expectedData.map(point => {
       const savedData = localStorage.getItem(`workout-performance-${point.date}`)
@@ -117,11 +147,23 @@ const ProgressView = () => {
           if (weights.length > 0) {
             const avgWeight = weights.reduce((sum, w) => sum + w, 0) / weights.length
             const avgReps = reps.length > 0 ? reps.reduce((sum, r) => sum + r, 0) / reps.length : point.expectedReps
+            const totalSets = weights.length
+            
+            // Calculate actual volume and intensity
+            const actualVolume = avgWeight * avgReps * totalSets
+            
+            // Simplified intensity calculation based on actual performance
+            const weightRatio = avgWeight / point.expected
+            const repsRatio = avgReps / point.expectedReps
+            const actualIntensity = Math.min(100, (weightRatio * 50) + (repsRatio * 50))
             
             return {
               ...point,
               actual: Math.round(avgWeight * 4) / 4,
-              actualReps: Math.round(avgReps)
+              actualReps: Math.round(avgReps),
+              actualSets: totalSets,
+              actualVolume: Math.round(actualVolume),
+              actualIntensity: Math.round(actualIntensity)
             }
           }
         }
@@ -159,17 +201,33 @@ const ProgressView = () => {
     setChartData(newChartData)
   }, [selectedExercises, timeRange])
 
-  // Custom tooltip for charts
+  // Custom tooltip for charts with multi-metric support
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border rounded-lg shadow-lg">
           <p className="font-medium">{label}</p>
-          {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }}>
-              {entry.name}: {entry.value}kg
-            </p>
-          ))}
+          {payload.map((entry, index) => {
+            let value = entry.value
+            let unit = ""
+            
+            // Determine unit based on data key
+            if (entry.dataKey?.includes('Volume') || entry.dataKey?.includes('volume')) {
+              unit = " kg"
+            } else if (entry.dataKey?.includes('Reps') || entry.dataKey?.includes('reps')) {
+              unit = " reps"
+            } else if (entry.dataKey?.includes('Intensity') || entry.dataKey?.includes('intensity')) {
+              unit = "%"
+            } else {
+              unit = "kg"
+            }
+            
+            return (
+              <p key={index} style={{ color: entry.color }}>
+                {entry.name}: {value}{unit}
+              </p>
+            )
+          })}
         </div>
       )
     }
@@ -216,6 +274,90 @@ const ProgressView = () => {
               </Button>
             </div>
 
+            {/* Metric Selection */}
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Select Metrics to Display
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedMetrics.weight}
+                    onChange={(e) => setSelectedMetrics(prev => ({ ...prev, weight: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Weight (kg)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedMetrics.reps}
+                    onChange={(e) => setSelectedMetrics(prev => ({ ...prev, reps: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Reps</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedMetrics.volume}
+                    onChange={(e) => setSelectedMetrics(prev => ({ ...prev, volume: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Volume</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedMetrics.intensity}
+                    onChange={(e) => setSelectedMetrics(prev => ({ ...prev, intensity: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Intensity Score</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Chart Type Selector */}
+            <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Chart Display Options
+              </h3>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={chartType === 'single' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setChartType('single')}
+                >
+                  Single Metric
+                </Button>
+                <Button
+                  variant={chartType === 'dual' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setChartType('dual')}
+                >
+                  Weight + Reps
+                </Button>
+                <Button
+                  variant={chartType === 'volume' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setChartType('volume')}
+                >
+                  Volume Focus
+                </Button>
+                <Button
+                  variant={chartType === 'intensity' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setChartType('intensity')}
+                >
+                  Intensity Analysis
+                </Button>
+              </div>
+            </div>
+
             {/* Exercise Selection */}
             <div className="mb-8">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -255,7 +397,7 @@ const ProgressView = () => {
                 <Card key={exerciseName} className="p-4">
                   <CardHeader>
                     <CardTitle className="text-lg">{exerciseName}</CardTitle>
-                    <div className="flex gap-4 text-sm text-muted-foreground">
+                    <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 bg-black rounded-full"></div>
                         <span>Expected</span>
@@ -268,41 +410,183 @@ const ProgressView = () => {
                         <div className="w-3 h-3 bg-red-500 rounded-full"></div>
                         <span>Actual (Below Expected)</span>
                       </div>
+                      {chartType === 'dual' && (
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          <span>Reps (Right Axis)</span>
+                        </div>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={data}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="week" />
-                        <YAxis label={{ value: 'Weight (kg)', angle: -90, position: 'insideLeft' }} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="expected" 
-                          stroke="#000000" 
-                          strokeWidth={2}
-                          name="Expected"
-                          connectNulls={false}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="actual" 
-                          stroke="#22c55e"
-                          strokeWidth={2}
-                          name="Actual"
-                          connectNulls={false}
-                          dot={(props) => {
-                            const { payload } = props
-                            if (payload && payload.actual && payload.expected) {
-                              const color = payload.actual >= payload.expected ? "#22c55e" : "#ef4444"
-                              return <circle {...props} fill={color} stroke={color} r={3} />
-                            }
-                            return null
-                          }}
-                        />
-                      </LineChart>
+                      {chartType === 'dual' ? (
+                        // Dual-axis chart: Weight + Reps
+                        <LineChart data={data}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="week" />
+                          <YAxis yAxisId="weight" label={{ value: 'Weight (kg)', angle: -90, position: 'insideLeft' }} />
+                          <YAxis yAxisId="reps" orientation="right" label={{ value: 'Reps', angle: 90, position: 'insideRight' }} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend />
+                          
+                          {/* Weight lines */}
+                          <Line 
+                            yAxisId="weight"
+                            type="monotone" 
+                            dataKey="expected" 
+                            stroke="#000000" 
+                            strokeWidth={2}
+                            name="Expected Weight"
+                            connectNulls={false}
+                          />
+                          <Line 
+                            yAxisId="weight"
+                            type="monotone" 
+                            dataKey="actual" 
+                            stroke="#22c55e"
+                            strokeWidth={2}
+                            name="Actual Weight"
+                            connectNulls={false}
+                            dot={(props) => {
+                              const { payload } = props
+                              if (payload && payload.actual && payload.expected) {
+                                const color = payload.actual >= payload.expected ? "#22c55e" : "#ef4444"
+                                return <circle {...props} fill={color} stroke={color} r={3} />
+                              }
+                              return null
+                            }}
+                          />
+                          
+                          {/* Reps lines */}
+                          <Line 
+                            yAxisId="reps"
+                            type="monotone" 
+                            dataKey="expectedReps" 
+                            stroke="#3b82f6" 
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            name="Expected Reps"
+                            connectNulls={false}
+                          />
+                          <Line 
+                            yAxisId="reps"
+                            type="monotone" 
+                            dataKey="actualReps" 
+                            stroke="#1d4ed8"
+                            strokeWidth={2}
+                            name="Actual Reps"
+                            connectNulls={false}
+                            dot={(props) => {
+                              const { payload } = props
+                              if (payload && payload.actualReps && payload.expectedReps) {
+                                const color = payload.actualReps >= payload.expectedReps ? "#1d4ed8" : "#dc2626"
+                                return <circle {...props} fill={color} stroke={color} r={3} />
+                              }
+                              return null
+                            }}
+                          />
+                        </LineChart>
+                      ) : chartType === 'volume' ? (
+                        // Volume-focused chart
+                        <LineChart data={data}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="week" />
+                          <YAxis label={{ value: 'Volume (kg)', angle: -90, position: 'insideLeft' }} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="expectedVolume" 
+                            stroke="#000000" 
+                            strokeWidth={2}
+                            name="Expected Volume"
+                            connectNulls={false}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="actualVolume" 
+                            stroke="#22c55e"
+                            strokeWidth={2}
+                            name="Actual Volume"
+                            connectNulls={false}
+                            dot={(props) => {
+                              const { payload } = props
+                              if (payload && payload.actualVolume && payload.expectedVolume) {
+                                const color = payload.actualVolume >= payload.expectedVolume ? "#22c55e" : "#ef4444"
+                                return <circle {...props} fill={color} stroke={color} r={3} />
+                              }
+                              return null
+                            }}
+                          />
+                        </LineChart>
+                      ) : chartType === 'intensity' ? (
+                        // Intensity score chart
+                        <LineChart data={data}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="week" />
+                          <YAxis domain={[0, 100]} label={{ value: 'Intensity Score', angle: -90, position: 'insideLeft' }} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="expectedIntensity" 
+                            stroke="#000000" 
+                            strokeWidth={2}
+                            name="Expected Intensity"
+                            connectNulls={false}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="actualIntensity" 
+                            stroke="#22c55e"
+                            strokeWidth={2}
+                            name="Actual Intensity"
+                            connectNulls={false}
+                            dot={(props) => {
+                              const { payload } = props
+                              if (payload && payload.actualIntensity && payload.expectedIntensity) {
+                                const color = payload.actualIntensity >= payload.expectedIntensity ? "#22c55e" : "#ef4444"
+                                return <circle {...props} fill={color} stroke={color} r={3} />
+                              }
+                              return null
+                            }}
+                          />
+                        </LineChart>
+                      ) : (
+                        // Single metric chart (weight only)
+                        <LineChart data={data}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="week" />
+                          <YAxis label={{ value: 'Weight (kg)', angle: -90, position: 'insideLeft' }} />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="expected" 
+                            stroke="#000000" 
+                            strokeWidth={2}
+                            name="Expected"
+                            connectNulls={false}
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="actual" 
+                            stroke="#22c55e"
+                            strokeWidth={2}
+                            name="Actual"
+                            connectNulls={false}
+                            dot={(props) => {
+                              const { payload } = props
+                              if (payload && payload.actual && payload.expected) {
+                                const color = payload.actual >= payload.expected ? "#22c55e" : "#ef4444"
+                                return <circle {...props} fill={color} stroke={color} r={3} />
+                              }
+                              return null
+                            }}
+                          />
+                        </LineChart>
+                      )}
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
